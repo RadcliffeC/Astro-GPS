@@ -2,6 +2,9 @@ import serial
 import pynmea2
 from datetime import datetime
 
+#Data sheet
+# https://content.u-blox.com/sites/default/files/MAX-M10S_DataSheet_UBX-20035208.pdf
+
 # Config serial port according to hardware
 SERIAL_PORT = "/dev/ttyUSB0" # Replace with serial port
 
