@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAX-M10S // Rocket Telemetry Ground Station</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="theme-dark">
+    <!-- Top Mission Control Navigation & Status Header -->
+    <header class="mission-header">
+        <div class="header-left">
+            <div class="mission-brand">
+                <div class="rocket-icon-pulse">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M12 2.5s3.5 3.5 3.5 8c0 2.2-.8 4.2-2.1 5.7l1.6 4.8-3-1.8-3 1.8 1.6-4.8C9.3 14.7 8.5 12.7 8.5 10.5c0-4.5 3.5-8 3.5-8zm-4 12c-1.5.5-2.5 1.5-2.5 2.5 0 1.5 2 2.5 4 2.5l-.5-2.5c-.5-.8-.8-1.7-1-2.5zm8 0c-.2.8-.5 1.7-1 2.5l-.5 2.5c2 0 4-1 4-2.5 0-1-1-2-2.5-2.5z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="mission-title">MAX-M10S GROUND CONTROL</h1>
+                    <div class="mission-subtitle">ROCKET TELEMETRY &amp; GNSS FLIGHT TRACKER</div>
+                </div>
+            </div>
+
+            <!-- Flight Phase Badge -->
+            <div class="flight-phase-container">
+                <span class="phase-label">PHASE</span>
+                <span id="flight-phase-badge" class="phase-badge phase-pad">PAD</span>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <!-- Mission Elapsed Time (MET) -->
+            <div class="timer-box">
+                <div class="timer-label">MISSION ELAPSED TIME</div>
+                <div id="met-clock" class="timer-digits">T+00:00:00.0</div>
+            </div>
+            <!-- GPS UTC Time -->
+            <div class="timer-box utc-box">
+                <div class="timer-label">GPS TIME (UTC)</div>
+                <div id="utc-clock" class="timer-digits">--:--:--.--</div>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <!-- Link & Signal Quality Status -->
+            <div class="link-status-card">
+                <div class="status-indicator">
+                    <span id="signal-dot" class="dot dot-disconnected"></span>
+                    <span id="signal-text" class="status-text">DISCONNECTED</span>
+                </div>
+                <div class="rate-indicator">
+                    <span id="packet-rate-val">0.0</span> Hz &bull; <span id="ws-status">WS CONNECTING</span>
+                </div>
+            </div>
+
+            <!-- Toolbar Action Buttons -->
+            <div class="header-actions">
+                <button id="btn-sim" class="btn btn-primary" title="Toggle Flight Simulator">
+                    <span class="btn-icon">&#9654;</span> <span id="btn-sim-text">Start Sim</span>
+                </button>
+                <button id="btn-serial-modal" class="btn btn-secondary" title="Serial Port Config">
+                    <span class="btn-icon">&#9889;</span> Serial
+                </button>
+                <button id="btn-pad-modal" class="btn btn-secondary" title="Configure Launch Pad">
+                    <span class="btn-icon">&#128205;</span> Pad
+                </button>
+                <button id="btn-reset" class="btn btn-outline-danger" title="Reset Flight Telemetry">
+                    <span class="btn-icon">&#8635;</span> Reset
+                </button>
+                <button id="btn-units" class="btn btn-secondary btn-icon-only" title="Toggle Metric/Imperial">
+                    <span id="units-label">METRIC</span>
+                </button>
+                <button id="btn-audio" class="btn btn-secondary btn-icon-only" title="Voice &amp; Audio Alerts">
+                    <span id="audio-icon">&#128266;</span>
+                </button>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" id="btn-export-dropdown">
+                        &#11015; Export
+                    </button>
+                    <div class="dropdown-menu" id="export-menu">
+                        <a href="/api/export/csv" download="rocket_flight.csv" class="dropdown-item">CSV Flight Log</a>
+                        <a href="/api/export/json" download="rocket_flight.json" class="dropdown-item">JSON Raw Data</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Grid Workspace -->
+    <main class="dashboard-grid">
+        <!-- COLUMN 1: Flight Telemetry HUD & Primary Gauges -->
+        <section class="hud-column">
+            <!-- Altitude Primary Card -->
+            <div class="telemetry-card card-altitude">
+                <div class="card-header">
+                    <span class="card-title">ALTITUDE</span>
+                    <span class="badge badge-accent" id="alt-mode-label">AGL</span>
+                </div>
+                <div class="card-body">
+                    <div class="primary-metric">
+                        <span id="alt-agl-val" class="metric-huge">0.0</span>
+                        <span class="metric-unit unit-alt">m</span>
+                    </div>
+                    <div class="sub-metrics-row">
+                        <div class="sub-metric">
+                            <span class="sub-label">MSL ALT</span>
+                            <span class="sub-value"><span id="alt-msl-val">0.0</span> <span class="unit-alt">m</span></span>
+                        </div>
+                        <div class="sub-metric highlight-apogee">
+                            <span class="sub-label">PEAK APOGEE</span>
+                            <span class="sub-value"><span id="max-alt-val">0.0</span> <span class="unit-alt">m</span></span>
+                        </div>
+                    </div>
+                    <!-- Altitude Bar Visual Gauge -->
+                    <div class="altitude-bar-container">
+                        <div id="altitude-fill" class="altitude-bar-fill" style="height: 0%;"></div>
+                        <div id="altitude-apogee-marker" class="altitude-apogee-line" style="bottom: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kinematics & Velocity Card -->
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <span class="card-title">VELOCITY &amp; CLIMB</span>
+                    <span id="mach-indicator" class="badge">Mach 0.00</span>
+                </div>
+                <div class="card-body">
+                    <div class="dual-metric-grid">
+                        <div class="metric-box">
+                            <span class="metric-label">VERTICAL SPEED (VVI)</span>
+                            <div class="metric-medium">
+                                <span id="vspeed-val" class="vspeed-positive">+0.0</span>
+                                <span class="metric-unit unit-speed">m/s</span>
+                            </div>
+                            <!-- Bidirectional VVI Bar -->
+                            <div class="vvi-meter">
+                                <div class="vvi-center-line"></div>
+                                <div id="vvi-bar" class="vvi-bar-fill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                        <div class="metric-box">
+                            <span class="metric-label">GROUND SPEED</span>
+                            <div class="metric-medium">
+                                <span id="gspeed-val">0.0</span>
+                                <span class="metric-unit unit-speed">m/s</span>
+                            </div>
+                            <div class="sub-metric-tiny">
+                                <span id="gspeed-alt-unit">0.0 km/h</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sub-metrics-row mt-2">
+                        <div class="sub-metric">
+                            <span class="sub-label">TOTAL 3D VELOCITY</span>
+                            <span class="sub-value"><span id="tot-vel-val">0.0</span> <span class="unit-speed">m/s</span></span>
+                        </div>
+                        <div class="sub-metric">
+                            <span class="sub-label">MAX VELOCITY</span>
+                            <span class="sub-value"><span id="max-vel-val">0.0</span> <span class="unit-speed">m/s</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Position, Bearing & Ground Tracking Card -->
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <span class="card-title">GROUND TRACKING &amp; VECTOR</span>
+                    <span class="badge badge-info" id="tracking-status">LOCKED</span>
+                </div>
+                <div class="card-body">
+                    <div class="vector-grid">
+                        <!-- Compass & Heading -->
+                        <div class="compass-wrapper">
+                            <div class="compass-rose">
+                                <div class="compass-dial" id="compass-dial">
+                                    <span class="compass-mark compass-n">N</span>
+                                    <span class="compass-mark compass-e">E</span>
+                                    <span class="compass-mark compass-s">S</span>
+                                    <span class="compass-mark compass-w">W</span>
+                                </div>
+                                <div class="compass-needle" id="compass-needle">
+                                    <svg viewBox="0 0 40 40" width="40" height="40">
+                                        <polygon points="20,2 25,20 20,16 15,20" fill="#00f3ff"/>
+                                        <polygon points="20,38 25,20 20,24 15,20" fill="#ff4d4d"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="compass-heading-label">
+                                <span id="heading-val">000</span>&deg;
+                            </div>
+                        </div>
+
+                        <!-- Range & Azimuth / Elevation -->
+                        <div class="vector-details">
+                            <div class="vector-item">
+                                <span class="v-label">GROUND DISTANCE</span>
+                                <span class="v-val"><span id="dist-pad-val">0</span> <span class="unit-dist">m</span></span>
+                            </div>
+                            <div class="vector-item">
+                                <span class="v-label">SLANT RANGE (3D)</span>
+                                <span class="v-val"><span id="slant-range-val">0</span> <span class="unit-dist">m</span></span>
+                            </div>
+                            <div class="vector-item">
+                                <span class="v-label">GROUND AZIMUTH</span>
+                                <span class="v-val"><span id="azimuth-val">0.0</span>&deg;</span>
+                            </div>
+                            <div class="vector-item">
+                                <span class="v-label">ELEVATION ANGLE</span>
+                                <span class="v-val"><span id="elevation-val">0.0</span>&deg;</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GPS Receiver & Signal Quality -->
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <span class="card-title">MAX-M10S GNSS STATUS</span>
+                    <span id="fix-badge" class="badge badge-fix-no">NO FIX</span>
+                </div>
+                <div class="card-body">
+                    <div class="coords-box">
+                        <div class="coords-row">
+                            <span class="coord-label">LAT</span>
+                            <span id="lat-val" class="coord-val">00.000000&deg; N</span>
+                        </div>
+                        <div class="coords-row">
+                            <span class="coord-label">LON</span>
+                            <span id="lon-val" class="coord-val">000.000000&deg; W</span>
+                        </div>
+                        <div class="coords-actions">
+                            <button id="btn-copy-coords" class="btn-tiny" title="Copy coordinates">Copy</button>
+                            <a id="btn-maps-link" href="#" target="_blank" class="btn-tiny" title="Open in Map">Maps &#8599;</a>
+                        </div>
+                    </div>
+
+                    <div class="gnss-metrics-grid mt-2">
+                        <div class="gnss-metric">
+                            <span class="sub-label">SATELLITES</span>
+                            <div class="sat-display">
+                                <span id="sats-val" class="sats-count">0</span>
+                                <div class="sat-signal-bars" id="sat-bars">
+                                    <span class="bar"></span>
+                                    <span class="bar"></span>
+                                    <span class="bar"></span>
+                                    <span class="bar"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gnss-metric">
+                            <span class="sub-label">HDOP / VDOP</span>
+                            <span class="sub-value"><span id="hdop-val">--</span> / <span id="vdop-val">--</span></span>
+                        </div>
+                        <div class="gnss-metric">
+                            <span class="sub-label">PAD COORDS</span>
+                            <span class="sub-value-small" id="pad-summary">32.9904, -106.9750</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- COLUMN 2: Real-time Trajectory Map -->
+        <section class="map-column">
+            <div class="map-card">
+                <div class="map-header">
+                    <div class="map-title-row">
+                        <span class="card-title">LIVE TRAJECTORY MAP</span>
+                        <div class="map-controls">
+                            <button id="btn-map-center" class="btn-chip active" title="Auto-center on rocket">
+                                &#127919; Follow Rocket
+                            </button>
+                            <button id="btn-map-layer" class="btn-chip" title="Toggle Satellite / Tactical view">
+                                &#128506; Layer
+                            </button>
+                            <button id="btn-clear-path" class="btn-chip" title="Clear path breadcrumbs">
+                                &#128465; Clear Path
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="map-container" class="map-view"></div>
+                <!-- Map Floating Telemetry Overlay -->
+                <div class="map-overlay-stats">
+                    <div class="stat-pill"><span class="pill-label">STATUS</span> <span id="map-status-val">READY</span></div>
+                    <div class="stat-pill"><span class="pill-label">TRACK LENGTH</span> <span id="track-points-count">0 pts</span></div>
+                    <div class="stat-pill"><span class="pill-label">RECOVERY SLANT</span> <span id="map-slant-val">0 m</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- COLUMN 3: Flight Profile Charts & Real-Time NMEA Terminal -->
+        <section class="charts-column">
+            <!-- Altitude Profile Chart -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <span class="card-title">ALTITUDE FLIGHT PROFILE</span>
+                    <span class="chart-legend-tag tag-altitude">AGL Altitude</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="altChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Velocity Profile Chart -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <span class="card-title">VELOCITY DYNAMICS</span>
+                    <div class="legend-group">
+                        <span class="chart-legend-tag tag-vspeed">Vertical m/s</span>
+                        <span class="chart-legend-tag tag-gspeed">Ground m/s</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="velChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Collapsible Raw NMEA & Flight Event Tabs -->
+            <div class="logs-card">
+                <div class="logs-header">
+                    <div class="tab-buttons">
+                        <button id="tab-btn-events" class="tab-btn active">Flight Events (<span id="events-count">0</span>)</button>
+                        <button id="tab-btn-nmea" class="tab-btn">Raw NMEA Stream</button>
+                    </div>
+                    <div class="logs-actions">
+                        <label class="toggle-checkbox">
+                            <input type="checkbox" id="autoscroll-toggle" checked>
+                            <span class="checkbox-label">Auto-scroll</span>
+                        </label>
+                        <button id="btn-clear-logs" class="btn-tiny">Clear</button>
+                    </div>
+                </div>
+
+                <!-- Flight Events Tab Content -->
+                <div id="tab-events" class="tab-content active">
+                    <div id="events-list" class="events-container">
+                        <div class="event-item event-info">
+                            <span class="event-time">T+00:00:00</span>
+                            <span class="event-badge badge-info">SYSTEM</span>
+                            <span class="event-msg">Ground station client initialized and awaiting telemetry stream.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw NMEA Terminal Content -->
+                <div id="tab-nmea" class="tab-content">
+                    <div id="nmea-terminal" class="terminal-body">
+                        <div class="term-line term-dim">// Listening for MAX-M10S NMEA sentences...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Serial Port Config Modal -->
+    <div id="modal-serial" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Hardware Serial Connection</h3>
+                <button class="modal-close" data-close="modal-serial">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="serial-port-select">Serial Device Port:</label>
+                    <div class="input-with-button">
+                        <select id="serial-port-select" class="form-control">
+                            <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
+                            <option value="/dev/ttyACM0">/dev/ttyACM0</option>
+                            <option value="/dev/tty.usbserial">/dev/tty.usbserial</option>
+                            <option value="COM3">COM3</option>
+                        </select>
+                        <button id="btn-refresh-ports" class="btn btn-secondary btn-tiny">Refresh</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="serial-baud-select">Baud Rate:</label>
+                    <select id="serial-baud-select" class="form-control">
+                        <option value="9600" selected>9600 (MAX-M10S Default)</option>
+                        <option value="115200">115200 (High Speed)</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="4800">4800</option>
+                    </select>
+                </div>
+                <div id="serial-status-msg" class="status-msg"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-serial-disconnect" class="btn btn-outline-danger">Disconnect</button>
+                <button id="btn-serial-connect" class="btn btn-primary">Connect GPS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Launch Pad Config Modal -->
+    <div id="modal-pad" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Launch Pad Reference Coordinates</h3>
+                <button class="modal-close" data-close="modal-pad">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Configure the ground station / launch pad coordinates used to calculate relative AGL altitude, ground distance, azimuth, and slant range.
+                </p>
+                <div class="form-group">
+                    <label for="pad-lat-input">Latitude (&deg;):</label>
+                    <input type="number" step="0.000001" id="pad-lat-input" class="form-control" value="32.990400">
+                </div>
+                <div class="form-group">
+                    <label for="pad-lon-input">Longitude (&deg;):</label>
+                    <input type="number" step="0.000001" id="pad-lon-input" class="form-control" value="-106.975000">
+                </div>
+                <div class="form-group">
+                    <label for="pad-alt-input">Pad Elevation MSL (m):</label>
+                    <input type="number" step="0.1" id="pad-alt-input" class="form-control" value="1400.0">
+                </div>
+                <button id="btn-pad-lock-current" class="btn btn-secondary btn-full">
+                    &#128205; Lock to Current GPS Fix
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary modal-close-btn" data-close="modal-pad">Cancel</button>
+                <button id="btn-pad-save" class="btn btn-primary">Save Pad</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
